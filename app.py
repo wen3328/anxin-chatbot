@@ -65,25 +65,6 @@ handler = WebhookHandler(channel_secret)
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 ASSISTANT_ID = os.getenv('ASSISTANT_ID')  # Set your Assistant ID in environment variables
 
-# Initialize Firebase
-cred = credentials.Certificate(
-    {
-        "type": os.getenv('FIREBASE_CREDENTIALS_TYPE'),
-        "project_id": os.getenv('FIREBASE_CREDENTIALS_PROJECT_ID'),
-        "private_key_id": os.getenv('FIREBASE_CREDENTIALS_PRIVATE_KEY_ID'),
-        "private_key": os.getenv('FIREBASE_CREDENTIALS_PRIVATE_KEY').replace('\\n', '\n'),
-        "client_email": os.getenv('FIREBASE_CREDENTIALS_CLIENT_EMAIL'),
-        "client_id": os.getenv('FIREBASE_CREDENTIALS_CLIENT_ID'),
-        "auth_uri": os.getenv('FIREBASE_CREDENTIALS_AUTH_URI'),
-        "token_uri": os.getenv('FIREBASE_CREDENTIALS_TOKEN_URI'),
-        "auth_provider_x509_cert_url": os.getenv('FIREBASE_CREDENTIALS_AUTH_PROVIDER_X509_CERT_URL'),
-        "client_x509_cert_url": os.getenv('FIREBASE_CREDENTIALS_CLIENT_X509_CERT_URL'),
-        "universe_domain": os.getenv('FIREBASE_CREDENTIALS_UNIVERSE_DOMAIN')
-    }
-)
-firebase_admin.initialize_app(cred)
-db = firestore.client()
-
 
 # ====== GPT Assistant Functions ======
 def create_thread():
@@ -156,12 +137,6 @@ def handle_message(event):
     user_message = event.message.text
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     current_date = datetime.now().strftime("%Y/%m/%d")
-
-    # Check if user message is "今日飲食規劃" or "今日飲食記錄"
-    if user_message == "今日飲食規劃":
-        user_message = f"今日飲食規劃 - {current_date}"
-    elif user_message == "今日飲食記錄":
-        user_message = f"今日飲食記錄 - {current_date}"
 
     try:
         user_ref = db.collection('users').document(user_id)
