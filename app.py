@@ -6,21 +6,18 @@ import os
 from dotenv import load_dotenv
 import traceback
 from datetime import datetime
+import time
 
 # LineBot import
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import (
     MessageEvent, TextMessage, TextSendMessage,
-    MemberJoinedEvent, PostbackEvent
+    PostbackEvent
 )
+
 # OpenAI import
 from openai import OpenAI
-
-# Firebase import
-import firebase_admin
-from firebase_admin import credentials, firestore
-import time
 
 # Load environment variables
 load_dotenv()
@@ -43,9 +40,7 @@ def validate_env_vars():
 # Validate environment variables first
 validate_env_vars()
 
-static_tmp_path = os.path.join(os.path.dirname(__file__), 'static', 'tmp')
-
-# Initialize Flask App
+# Flask App Initialization
 app = Flask(__name__)
 
 # LineBot Initialization
@@ -65,25 +60,31 @@ handler = WebhookHandler(channel_secret)
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 ASSISTANT_ID = os.getenv('ASSISTANT_ID')  # Set your Assistant ID in environment variables
 
+# Store user Thread and history
+user_threads = {}  # Mapping user_id to thread_id
+user_histories = {}  # Mapping user_id to message history
+
 
 # ====== GPT Assistant Functions ======
-def create_thread():
-    """Create a new conversation Thread"""
+def create_thread(user_id):
+    """Create a new conversation thread for the user."""
     thread = client.beta.threads.create()
+    user_threads[user_id] = thread.id
+    user_histories[user_id] = []  # Initialize user's message history
     return thread.id
 
 
-def add_message_to_thread(thread_id, user_message):
-    """Add user message to Thread"""
+def add_message_to_thread(thread_id, role, content):
+    """Add a message to the thread."""
     client.beta.threads.messages.create(
         thread_id=thread_id,
-        role="user",
-        content=user_message
+        role=role,
+        content=content
     )
 
 
 def run_assistant(thread_id):
-    """Run Assistant and get reply"""
+    """Run the Assistant and get the reply."""
     run = client.beta.threads.runs.create(
         thread_id=thread_id,
         assistant_id=ASSISTANT_ID
@@ -132,114 +133,37 @@ def callback():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_id = event.source.user_id
-    profile = line_bot_api.get_profile(user_id)
-    display_name = profile.display_name
     user_message = event.message.text
-    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    current_date = datetime.now().strftime("%Y/%m/%d")
 
     try:
-        user_ref = db.collection('users').document(user_id)
-        user_doc = user_ref.get()
-        
-        # Initialize messages list
-        messages = []
-        is_processing = False
-        
-        if user_doc.exists:
-            # If user exists, get thread_id and update messages
-            user_data = user_doc.to_dict()
-            thread_id = user_data.get('thread_id')
-            is_processing = user_data.get('is_processing', False)
-            messages = user_data.get('messages', [])
+        # Check if the user has an existing thread
+        if user_id not in user_threads:
+            thread_id = create_thread(user_id)
         else:
-            # If user does not exist, create a new thread
-            thread_id = create_thread()
+            thread_id = user_threads[user_id]
 
-            user_ref.set({
-                'thread_id': thread_id,
-                'is_processing': False,
-                'last_active': firestore.SERVER_TIMESTAMP,
-                'create_at': firestore.SERVER_TIMESTAMP,
-                'user_info': {
-                    'display_name': display_name,
-                    'language': profile.language if hasattr(profile, 'language') else 'zh-Hant'
-                },
-                'messages': []
-            })
-            
-        if is_processing:
-            return
+        # Add the user's message to their history and thread
+        user_histories[user_id].append({"role": "user", "content": user_message})
+        add_message_to_thread(thread_id, "user", user_message)
 
-        # Update user message status
-        user_ref.update({
-            'is_processing': True,
-            'last_active': firestore.SERVER_TIMESTAMP,
-        })
-        
-        # Add user message
-        messages.append({
-            'role': 'user',
-            'content': user_message,
-            'create_at': current_time
-        })
-        
-        # Immediately update Firestore with user message
-        user_ref.update({
-            'messages': messages,
-            'last_active': firestore.SERVER_TIMESTAMP
-        })
-        
-        add_message_to_thread(thread_id, user_message)
+        # Run the Assistant and get the reply
         assistant_reply = run_assistant(thread_id)
 
-        # Get updated messages array
-        updated_doc = user_ref.get().to_dict()
-        messages = updated_doc.get('messages', [])
-        
-        # Add assistant reply
-        messages.append({
-            'role': 'assistant',
-            'content': assistant_reply,
-            'create_at': current_time
-        })
+        # Add the Assistant's reply to the user's history
+        user_histories[user_id].append({"role": "assistant", "content": assistant_reply})
 
-        # Update with new message
-        user_ref.update({
-            'messages': messages,
-            'last_active': firestore.SERVER_TIMESTAMP,
-            'is_processing': False
-        })
-
+        # Reply to the user
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(text=assistant_reply)
         )
     except Exception as e:
         print(traceback.format_exc())
-        print(f"An error occurred: {e}")
         error_message = "噢！糖安心小幫手暫時無法使用，請稍後再試"
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(text=error_message)
         )
-        # Update with error message
-        if 'user_ref' in locals():
-            try:
-                updated_doc = user_ref.get().to_dict()
-                messages = updated_doc.get('messages', [])
-                messages.append({
-                    'role': 'assistant',
-                    'content': error_message,
-                    'create_at': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                })
-                user_ref.update({
-                    'messages': messages,
-                    'last_active': firestore.SERVER_TIMESTAMP,
-                    'is_processing': False  # Reset processing status
-                })
-            except Exception as e:
-                print(f"Error updating error message: {e}")
 
 
 # ====== Handle Postback Event ======
@@ -250,5 +174,5 @@ def handle_postback(event):
 
 # ====== Start Flask App ======
 if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
