@@ -3,3 +3,7 @@ python-dotenv
 line-bot-sdk
 openai
 gunicorn
+
+firebase-admin==6.0.1
+Flask==2.2.2
+gunicorn==20.1.0
