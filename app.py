@@ -1,6 +1,8 @@
 from flask import Flask, request, abort
 import os
+import json
 from dotenv import load_dotenv
+from google.cloud import secretmanager
 import traceback
 import time
 import re
@@ -22,9 +24,21 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(os.getenv('CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 
-# Firebase 初始化
-cred = credentials.Certificate('./path/to/serviceAccountKey.json')
-firebase_admin.initialize_app(cred)
+# ====== 從 Secret Manager 取得 Firebase 金鑰 ======
+def get_firebase_credentials_from_secret(secret_name="firebase-service-account"):
+    client = secretmanager.SecretManagerServiceClient()
+    project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
+    secret_path = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
+    response = client.access_secret_version(request={"name": secret_path})
+
+    # 解碼並讀取 Secret 內容
+    secret_payload = response.payload.data.decode("UTF-8")
+    service_account_info = json.loads(secret_payload)
+    return credentials.Certificate(service_account_info)
+
+# 使用 Secret 初始化 Firebase
+firebase_cred = get_firebase_credentials_from_secret()
+firebase_admin.initialize_app(firebase_cred)
 db = firestore.client()
 
 # OpenAI API 初始化
