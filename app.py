@@ -25,7 +25,7 @@ line_bot_api = LineBotApi(os.getenv('CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 
 # ====== 從 Secret Manager 取得 Firebase 金鑰 ======
-def get_firebase_credentials_from_secret(secret_name="firebase-service-account"):
+def get_firebase_credentials_from_secret(secret_name="firebase"):
     client = secretmanager.SecretManagerServiceClient()
     project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
     secret_path = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
