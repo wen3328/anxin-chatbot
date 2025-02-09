@@ -5,5 +5,6 @@ openai
 gunicorn
 
 firebase-admin==6.0.1
-Flask==2.2.2
+Flask>=2.2.0
+Werkzeug>=2.2.0
 gunicorn==20.1.0
