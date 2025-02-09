@@ -2,7 +2,6 @@ from flask import Flask, request, abort
 import os
 import json
 from dotenv import load_dotenv
-from google.cloud import secretmanager
 import traceback
 import time
 import re
@@ -24,25 +23,25 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(os.getenv('CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 
-# ====== 從 Secret Manager 取得 Firebase 金鑰 ======
-def get_firebase_credentials_from_secret(secret_name="firebase"):
+# ====== 從環境變數讀取 Firebase 金鑰 ======
+def get_firebase_credentials_from_env():
     try:
-        client = secretmanager.SecretManagerServiceClient()
-        project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
-        secret_path = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
-        response = client.access_secret_version(request={"name": secret_path})
+        # 從環境變數中讀取金鑰 JSON 字串
+        firebase_credentials = os.getenv("FIREBASE_CREDENTIALS")
 
-        # 解碼並讀取 Secret 內容
-        secret_payload = response.payload.data.decode("UTF-8")
-        service_account_info = json.loads(secret_payload)
-        print("成功從 Secret Manager 取得 Firebase 憑證")
+        if not firebase_credentials:
+            raise ValueError("未找到環境變數 FIREBASE_CREDENTIALS，請檢查 Cloud Run 設定")
+
+        # 將 JSON 字串解析為字典
+        service_account_info = json.loads(firebase_credentials)
+        print("成功從環境變數讀取 Firebase 金鑰")
         return credentials.Certificate(service_account_info)
     except Exception as e:
-        print(f"從 Secret Manager 獲取 Firebase 金鑰失敗: {str(e)}")
+        print(f"從環境變數讀取 Firebase 金鑰失敗: {str(e)}")
         raise
 
-# 使用 Secret 初始化 Firebase
-firebase_cred = get_firebase_credentials_from_secret()
+# 使用環境變數初始化 Firebase
+firebase_cred = get_firebase_credentials_from_env()
 firebase_admin.initialize_app(firebase_cred)
 db = firestore.client()
 
