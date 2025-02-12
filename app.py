@@ -18,13 +18,13 @@ from openai import OpenAI
 # 加載環境變數
 load_dotenv()
 
-# ✅ 定義全域變數來記錄使用者最後訊息時間（放在 `handle_message` 之外）
-user_last_message_time = {}
-
 # 初始化 Flask 和 LINE Bot
 app = Flask(__name__)
 line_bot_api = LineBotApi(os.getenv('CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
+
+# ✅ 定義全域變數來記錄使用者最後訊息時間（放在 `handle_message` 之外）
+user_last_message_time = {}
 
 # ====== 從環境變數讀取 Firebase 金鑰 ======
 def get_firebase_credentials_from_env():
