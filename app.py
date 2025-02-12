@@ -104,6 +104,16 @@ def handle_message(event):
     user_id = event.source.user_id
     user_message = event.message.text
 
+    # ✅ 檢查使用者是否在短時間內發送多則訊息
+    if user_id in user_last_message_time:
+        time_diff = current_time - user_last_message_time[user_id]
+        if time_diff < 1.5:  # 若時間間隔小於 1.5 秒，則忽略此訊息
+            print(f"忽略 {user_id} 的訊息：{user_message}（短時間內重複輸入）")
+            return  # 直接忽略這則訊息，不執行後續回應
+
+    # ✅ 更新使用者的最後發送時間
+    user_last_message_time[user_id] = current_time
+
     print(f"接收到用戶訊息：user_id={user_id}, message={user_message}")
 
     try:
