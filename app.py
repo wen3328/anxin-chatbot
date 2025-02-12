@@ -23,7 +23,7 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(os.getenv('CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 
-# ✅ 定義全域變數來記錄使用者最後訊息時間（放在 `handle_message` 之外）
+# ✅ 定義全域變數來記錄使用者最後訊息時間
 user_last_message_time = {}
 
 # ====== 從環境變數讀取 Firebase 金鑰 ======
@@ -106,6 +106,7 @@ def callback():
 def handle_message(event):
     user_id = event.source.user_id
     user_message = event.message.text
+    current_time = time.time()  # ✅ 確保變數有正確初始化
 
     # ✅ 檢查使用者是否在短時間內發送多則訊息
     if user_id in user_last_message_time:
