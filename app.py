@@ -23,8 +23,9 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(os.getenv('CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 
-# ✅ 定義全域變數來記錄使用者最後訊息時間
+# ✅ 定義全域變數來記錄使用者最後訊息時間 & 上次回覆內容
 user_last_message_time = {}
+user_last_reply = {}
 
 # ====== 從環境變數讀取 Firebase 金鑰 ======
 def get_firebase_credentials_from_env():
@@ -66,14 +67,26 @@ def run_assistant(thread_id):
     try:
         print(f"執行 OpenAI Assistant，對話 ID: {thread_id}")
         run = client.beta.threads.runs.create(thread_id=thread_id, assistant_id=ASSISTANT_ID)
+
+        timeout_counter = 0
         while True:
             run_status = client.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
             if run_status.status == 'completed':
-                print("OpenAI Assistant 完成")
                 break
-            time.sleep(1)
+            time.sleep(0.5)
+            timeout_counter += 1
+            if timeout_counter > 10:
+                raise TimeoutError("OpenAI 回應超時")
+
         messages = client.beta.threads.messages.list(thread_id=thread_id)
-        return messages.data[0].content[0].text.value
+        assistant_reply = messages.data[0].content[0].text.value.strip()
+
+        # ✅ 限制最大回應長度，避免 LINE 拆分訊息
+        max_length = 300
+        if len(assistant_reply) > max_length:
+            assistant_reply = assistant_reply[:max_length] + "..."
+
+        return assistant_reply
     except Exception as e:
         print(f"OpenAI Assistant 執行錯誤: {str(e)}")
         return "❗ 無法取得 OpenAI 回應"
@@ -105,18 +118,24 @@ def callback():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_id = event.source.user_id
-    user_message = event.message.text
+    user_message = event.message.text.strip()
     current_time = time.time()  # ✅ 確保變數有正確初始化
 
-    # ✅ 檢查使用者是否在短時間內發送多則訊息
+    # ✅ 如果這則訊息已經回應過，則忽略，避免重複回應
+    if user_id in user_last_reply and user_last_reply[user_id] == user_message:
+        print(f"忽略重複訊息：{user_message}")
+        return
+
+    # ✅ 短時間內只回應一次
     if user_id in user_last_message_time:
         time_diff = current_time - user_last_message_time[user_id]
         if time_diff < 10:  # 若時間間隔小於 1.5 秒，則忽略此訊息
             print(f"忽略 {user_id} 的訊息：{user_message}（短時間內重複輸入）")
-            return  # 直接忽略這則訊息，不執行後續回應
+            return  
 
-    # ✅ 更新使用者的最後發送時間
-    user_last_message_time[user_id] = current_time
+    # ✅ 更新最後回覆的內容，避免重複回應相同訊息
+    user_last_reply[user_id] = user_message
+    user_last_message_time[user_id] = current_time  # 更新使用者最後發送時間
 
     print(f"接收到用戶訊息：user_id={user_id}, message={user_message}")
 
@@ -142,15 +161,7 @@ def handle_message(event):
         assistant_reply = run_assistant(thread_id)
         assistant_reply = remove_markdown(assistant_reply)
 
-        # 新增 OpenAI 回應至對話歷史並修剪
-        messages.append({"role": "assistant", "content": assistant_reply})
-        messages = trim_message_history(messages)
-
-        # 更新 Firestore 中的用戶資料
-        user_ref.set({"thread_id": thread_id, "messages": messages})
-        print("成功更新用戶對話歷史至 Firestore")
-
-        # 回應用戶
+        # ✅ 確保 `reply_message()` 只執行一次
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=assistant_reply))
 
     except Exception as e:
