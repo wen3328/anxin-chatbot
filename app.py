@@ -30,11 +30,13 @@ user_last_reply = {}
 # ====== 從環境變數讀取 Firebase 金鑰 ======
 def get_firebase_credentials_from_env():
     try:
+        # 從環境變數中讀取金鑰 JSON 字串
         firebase_credentials = os.getenv("FIREBASE_CREDENTIALS")
 
         if not firebase_credentials:
             raise ValueError("未找到環境變數 FIREBASE_CREDENTIALS，請檢查 Cloud Run 設定")
 
+        # 將 JSON 字串解析為字典
         service_account_info = json.loads(firebase_credentials)
         print("成功從環境變數讀取 Firebase 金鑰")
         return credentials.Certificate(service_account_info)
@@ -42,7 +44,7 @@ def get_firebase_credentials_from_env():
         print(f"從環境變數讀取 Firebase 金鑰失敗: {str(e)}")
         raise
 
-# 初始化 Firebase
+# 使用環境變數初始化 Firebase
 firebase_cred = get_firebase_credentials_from_env()
 firebase_admin.initialize_app(firebase_cred)
 db = firestore.client()
@@ -64,11 +66,7 @@ def add_message_to_thread(thread_id, role, content):
 def run_assistant(thread_id):
     try:
         print(f"執行 OpenAI Assistant，對話 ID: {thread_id}")
-        run = client.beta.threads.runs.create(
-            thread_id=thread_id,
-            assistant_id=ASSISTANT_ID,
-            max_tokens=300  # ✅ 讓 OpenAI 自己限制回應長度
-        )
+        run = client.beta.threads.runs.create(thread_id=thread_id, assistant_id=ASSISTANT_ID)
 
         timeout_counter = 0
         while True:
@@ -82,6 +80,11 @@ def run_assistant(thread_id):
 
         messages = client.beta.threads.messages.list(thread_id=thread_id)
         assistant_reply = messages.data[0].content[0].text.value.strip()
+
+        # ✅ 限制最大回應長度，避免 LINE 拆分訊息
+        max_length = 500
+        if len(assistant_reply) > max_length:
+            assistant_reply = assistant_reply[:max_length] + "..."
 
         return assistant_reply
     except Exception as e:
@@ -116,21 +119,23 @@ def callback():
 def handle_message(event):
     user_id = event.source.user_id
     user_message = event.message.text.strip()
-    current_time = time.time()
+    current_time = time.time()  # ✅ 確保變數有正確初始化
 
-    # ✅ 避免短時間內重複回應
+    # ✅ 如果這則訊息已經回應過，則忽略，避免重複回應
     if user_id in user_last_reply and user_last_reply[user_id] == user_message:
         print(f"忽略重複訊息：{user_message}")
         return
 
+    # ✅ 短時間內只回應一次
     if user_id in user_last_message_time:
         time_diff = current_time - user_last_message_time[user_id]
-        if time_diff < 1.5:
+        if time_diff < 1.5:  # 若時間間隔小於 1.5 秒，則忽略此訊息
             print(f"忽略 {user_id} 的訊息：{user_message}（短時間內重複輸入）")
             return  
 
+    # ✅ 更新最後回覆的內容，避免重複回應相同訊息
     user_last_reply[user_id] = user_message
-    user_last_message_time[user_id] = current_time  
+    user_last_message_time[user_id] = current_time  # 更新使用者最後發送時間
 
     print(f"接收到用戶訊息：user_id={user_id}, message={user_message}")
 
@@ -161,7 +166,7 @@ def handle_message(event):
 
     except Exception as e:
         print(f"處理訊息時發生錯誤: {traceback.format_exc()}")
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❗ 糖安心小助手暫時無法使用"))
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❗安昕暫時無法使用，請聯絡研究人員"))
 
 if __name__ == "__main__":
     port = int(os.getenv('PORT', 8080))
