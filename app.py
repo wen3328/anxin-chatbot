@@ -23,10 +23,6 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(os.getenv('CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 
-# ✅ 定義全域變數來記錄使用者最後訊息時間 & 上次回覆內容
-user_last_message_time = {}
-user_last_reply = {}
-
 # ====== 從環境變數讀取 Firebase 金鑰 ======
 def get_firebase_credentials_from_env():
     try:
@@ -81,11 +77,6 @@ def run_assistant(thread_id):
         messages = client.beta.threads.messages.list(thread_id=thread_id)
         assistant_reply = messages.data[0].content[0].text.value.strip()
 
-        # ✅ 限制最大回應長度，避免 LINE 拆分訊息
-        max_length = 400
-        if len(assistant_reply) > max_length:
-            assistant_reply = assistant_reply[:max_length] + "..."
-
         return assistant_reply
     except Exception as e:
         print(f"OpenAI Assistant 執行錯誤: {str(e)}")
@@ -120,23 +111,6 @@ def handle_message(event):
     user_id = event.source.user_id
     user_message = event.message.text.strip()
     current_time = time.time()  # ✅ 確保變數有正確初始化
-
-    # ✅ 如果這則訊息已經回應過，則忽略，避免重複回應
-    if user_id in user_last_reply and user_last_reply[user_id] == user_message:
-        print(f"忽略重複訊息：{user_message}")
-        return
-
-    # ✅ 短時間內只回應一次
-    if user_id in user_last_message_time:
-        time_diff = current_time - user_last_message_time[user_id]
-        if time_diff < 1.5:  # 若時間間隔小於 1.5 秒，則忽略此訊息
-            print(f"忽略 {user_id} 的訊息：{user_message}（短時間內重複輸入）")
-            return  
-
-    # ✅ 更新最後回覆的內容，避免重複回應相同訊息
-    user_last_reply[user_id] = user_message
-    user_last_message_time[user_id] = current_time  # 更新使用者最後發送時間
-
     print(f"接收到用戶訊息：user_id={user_id}, message={user_message}")
 
     try:
@@ -160,10 +134,7 @@ def handle_message(event):
 
         assistant_reply = run_assistant(thread_id)
         assistant_reply = remove_markdown(assistant_reply)
-
-        # ✅ 確保 `reply_message()` 只執行一次
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=assistant_reply))
-
+        
     except Exception as e:
         print(f"處理訊息時發生錯誤: {traceback.format_exc()}")
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❗安昕暫時無法使用，請聯絡研究人員"))
