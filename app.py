@@ -82,7 +82,7 @@ def run_assistant(thread_id):
         assistant_reply = messages.data[0].content[0].text.value.strip()
 
         # ✅ 限制最大回應長度，避免 LINE 拆分訊息
-        max_length = 250
+        max_length = 400
         if len(assistant_reply) > max_length:
             assistant_reply = assistant_reply[:max_length] + "..."
 
