@@ -79,12 +79,12 @@ def run_assistant(thread_id):
         # 🔴 **檢查 API Rate Limit**
         if "Rate limit exceeded" in assistant_reply:
             print("🚨 OpenAI API 達到速率限制，請降低請求頻率")
-            return "❗安昕繁忙中，請再重新再傳一次訊息，若持續無回應，請聯絡研究人員"
+            return "❗安昕繁忙中，請重新傳一次訊息，若持續無回應，請聯絡研究人員"
 
         return assistant_reply
     except Exception as e:
         print(f"❌ OpenAI Assistant 執行錯誤: {str(e)}")
-        return "❗安昕繁忙中，請再重新再傳一次訊息，若持續無回應，請聯絡研究人員"
+        return "❗安昕繁忙中，請重新傳一次訊息，若持續無回應，請聯絡研究人員"
 
 def remove_markdown(text):
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)  # Bold
@@ -146,7 +146,7 @@ def handle_message(event):
 
     except Exception as e:
         print(f"❌ 處理訊息時發生錯誤: {traceback.format_exc()}")
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❗安昕繁忙中，請再重新再傳一次訊息，若持續無回應，請聯絡研究人員"))
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❗安昕繁忙中，請重新傳一次訊息，若持續無回應，請聯絡研究人員"))
 
 if __name__ == "__main__":
     port = int(os.getenv('PORT', 8080))
