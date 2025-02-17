@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import traceback
 import time
 import re
+import threading  # 🔹 用於控制並發請求
 
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
@@ -22,6 +23,9 @@ load_dotenv()
 app = Flask(__name__)
 line_bot_api = LineBotApi(os.getenv('CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
+
+# 🔹 定義全域變數來記錄使用者請求狀態
+user_lock = {}
 
 # ====== Firebase 初始化 ======
 def get_firebase_credentials_from_env():
@@ -79,12 +83,12 @@ def run_assistant(thread_id):
         # 🔴 **檢查 API Rate Limit**
         if "Rate limit exceeded" in assistant_reply:
             print("🚨 OpenAI API 達到速率限制，請降低請求頻率")
-            return "❗安昕繁忙中，請重新傳一次訊息，若持續無回應，請聯絡研究人員"
+            return "❗安昕繁忙中，請稍後再試"
 
         return assistant_reply
     except Exception as e:
         print(f"❌ OpenAI Assistant 執行錯誤: {str(e)}")
-        return "❗安昕繁忙中，請重新傳一次訊息，若持續無回應，請聯絡研究人員"
+        return "❗安昕暫時無法使用，請稍後再試"
 
 def remove_markdown(text):
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)  # Bold
@@ -109,10 +113,20 @@ def callback():
 def handle_message(event):
     user_id = event.source.user_id
     user_message = event.message.text.strip()
-    print(f"📩 接收到用戶訊息：user_id={user_id}, message={user_message}")
+
+    # 🔹 **防止短時間內多次請求，確保請求按序執行**
+    if user_id in user_lock and user_lock[user_id].is_alive():
+        print(f"⚠️ 忽略 {user_id} 的訊息：{user_message}（因為上一個請求尚未完成）")
+        return
+
+    # 🔹 **開啟新執行緒處理請求**
+    user_lock[user_id] = threading.Thread(target=process_message, args=(user_id, user_message, event))
+    user_lock[user_id].start()
+
+def process_message(user_id, user_message, event):
+    print(f"📩 開始處理訊息：user_id={user_id}, message={user_message}")
 
     try:
-        # 🔎 查詢 Firestore 紀錄
         user_ref = db.collection("users").document(user_id)
         user_doc = user_ref.get()
 
@@ -145,8 +159,12 @@ def handle_message(event):
         line_bot_api.reply_message(event.reply_token, [TextSendMessage(text=msg) for msg in reply_messages])
 
     except Exception as e:
-        print(f"❌ 處理訊息時發生錯誤: {traceback.format_exc()}")
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❗安昕繁忙中，請重新傳一次訊息，若持續無回應，請聯絡研究人員"))
+        print(f"❌ 錯誤: {traceback.format_exc()}")
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❗安昕暫時無法使用，請稍後再試"))
+
+    finally:
+        if user_id in user_lock:
+            del user_lock[user_id]  # ✅ 清除鎖定，允許下一個請求
 
 if __name__ == "__main__":
     port = int(os.getenv('PORT', 8080))
