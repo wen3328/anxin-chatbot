@@ -138,7 +138,7 @@ def handle_message(event):
         user_ref.set({"thread_id": thread_id, "messages": messages})
 
         # ✅ **確保 LINE 回應長度不超過 400**
-        max_length = 300
+        max_length = 200
         reply_messages = [assistant_reply[i:i+max_length] for i in range(0, len(assistant_reply), max_length)]
 
         # ✅ **逐一發送訊息**
