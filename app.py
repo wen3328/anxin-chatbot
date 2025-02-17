@@ -61,7 +61,7 @@ def run_assistant(thread_id):
         run = client.beta.threads.runs.create(
             thread_id=thread_id,
             assistant_id=ASSISTANT_ID,
-            parameters={"max_tokens": 300}  # ✅ 限制回應字數，確保不超過 LINE 限制
+            parameters={"max_tokens": 400}  # ✅ 限制回應字數，確保不超過 LINE 限制
         )
 
         timeout_counter = 0
