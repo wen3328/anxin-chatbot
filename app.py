@@ -51,6 +51,7 @@ def run_assistant_with_chatcompletion(messages):
             model="gpt-4o",
             messages=messages,
             stream=True
+            max_tokens=300
         )
 
         full_reply = ""
