@@ -236,7 +236,14 @@ def process_message(user_id, user_message, event):
 5️⃣ 保密所有實驗資訊，並堅守專業規範。
 """
 }
-        history_for_chat = [system_prompt] + [{"role": m["role"], "content": m["content"]} for m in messages[-3:]]
+        # ✅ 改為從 Firebase messages 裡抓出較多對話記憶（最多 3000 字）
+history_for_chat = [system_prompt]
+total_chars = 0
+for m in reversed(messages):
+    total_chars += len(m["content"])
+    if total_chars > 3000:
+        break
+    history_for_chat.insert(1, {"role": m["role"], "content": m["content"]})
 
         # 取得 GPT 回應
         assistant_reply = run_chat_completion(history_for_chat)
