@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import traceback
 import time
 import re
-import threading  # 🔹 用於控制並發請求
+import threading
 
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
@@ -16,96 +16,56 @@ from firebase_admin import credentials, firestore
 
 from openai import OpenAI
 
-# 加載環境變數
+# ====== 初始化設定 ======
 load_dotenv()
-
-# 初始化 Flask 和 LINE Bot
 app = Flask(__name__)
 line_bot_api = LineBotApi(os.getenv('CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
+client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
-# 🔹 定義全域變數來記錄使用者請求狀態
 user_lock = {}
 
 # ====== Firebase 初始化 ======
 def get_firebase_credentials_from_env():
-    try:
-        firebase_credentials = os.getenv("FIREBASE_CREDENTIALS")
-        if not firebase_credentials:
-            raise ValueError("未找到環境變數 FIREBASE_CREDENTIALS，請檢查 Cloud Run 設定")
-        service_account_info = json.loads(firebase_credentials)
-        print("✅ 成功從環境變數讀取 Firebase 金鑰")
-        return credentials.Certificate(service_account_info)
-    except Exception as e:
-        print(f"❌ Firebase 金鑰讀取失敗: {str(e)}")
-        raise
+    firebase_credentials = os.getenv("FIREBASE_CREDENTIALS")
+    service_account_info = json.loads(firebase_credentials)
+    print("✅ 成功從環境變數讀取 Firebase 金鑰")
+    return credentials.Certificate(service_account_info)
 
 firebase_cred = get_firebase_credentials_from_env()
 firebase_admin.initialize_app(firebase_cred)
 db = firestore.client()
 
-# 初始化 OpenAI API
-client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-ASSISTANT_ID = os.getenv('ASSISTANT_ID')
-
-# ====== GPT Functions ======
-def create_thread(user_id):
-    print(f"🆕 為用戶 {user_id} 創建新的 OpenAI 對話")
-    thread = client.beta.threads.create()
-    return thread.id
-
-def add_message_to_thread(thread_id, role, content):
-    print(f"📩 新增訊息至 OpenAI 對話 {thread_id}: [{role}] {content}")
-    client.beta.threads.messages.create(
-        thread_id=thread_id,
-        role=role,
-        content=content
-    )
-
-def run_assistant(thread_id):
+# ====== GPT 回應處理（ChatCompletion） ======
+def run_chat_completion(messages):
     try:
-        print(f"🚀 執行 OpenAI Assistant，對話 ID: {thread_id}")
-        run = client.beta.threads.runs.create(thread_id=thread_id, assistant_id=ASSISTANT_ID)
-
-        timeout_counter = 0
-        while True:
-            run_status = client.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
-            if run_status.status == 'completed':
-                break
-            time.sleep(0.5)
-            timeout_counter += 1
-            if timeout_counter > 20:
-                raise TimeoutError("⏳ OpenAI 回應超時")
-
-        messages = client.beta.threads.messages.list(thread_id=thread_id)
-        assistant_reply = messages.data[0].content[0].text.value.strip()
-
-        # 🔴 **檢查 API Rate Limit**
-        if "Rate limit exceeded" in assistant_reply:
-            print("🚨 OpenAI API 達到速率限制，請降低請求頻率")
-            return "❗安昕繁忙中，請稍後再試"
-
-        return assistant_reply
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=messages,
+            max_tokens=300,  # 控制字數落在 200~300 字
+            stream=False
+        )
+        return response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"❌ OpenAI Assistant 執行錯誤: {str(e)}")
+        print("❌ ChatCompletion 錯誤：")
+        traceback.print_exc()
         return "❗安昕暫時無法使用，請稍後再試"
 
+# ====== 清除 markdown 格式（防止 LINE 亂碼） ======
 def remove_markdown(text):
-    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)  # Bold
-    text = re.sub(r'\*(.*?)\*', r'\1', text)      # Italic
-    text = re.sub(r'`(.*?)`', r'\1', text)        # Inline code
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+    text = re.sub(r'\*(.*?)\*', r'\1', text)
+    text = re.sub(r'`(.*?)`', r'\1', text)
     return text
 
-# ====== LINE Bot Webhook ======
+# ====== LINE Webhook 接收點 ======
 @app.route("/callback", methods=['POST'])
 def callback():
     signature = request.headers['X-Line-Signature']
     body = request.get_data(as_text=True)
     try:
-        print("📩 接收到 LINE Webhook 請求")
         handler.handle(body, signature)
     except InvalidSignatureError:
-        print("❌ 簽名驗證失敗")
         abort(400)
     return 'OK'
 
@@ -114,58 +74,58 @@ def handle_message(event):
     user_id = event.source.user_id
     user_message = event.message.text.strip()
 
-    # 🔹 **防止短時間內多次請求，確保請求按序執行**
     if user_id in user_lock and user_lock[user_id].is_alive():
-        print(f"⚠️ 忽略 {user_id} 的訊息：{user_message}（因為上一個請求尚未完成）")
+        print(f"⚠️ 忽略 {user_id} 的訊息：{user_message}（上一個請求尚未完成）")
         return
 
-    # 🔹 **開啟新執行緒處理請求**
     user_lock[user_id] = threading.Thread(target=process_message, args=(user_id, user_message, event))
     user_lock[user_id].start()
 
+# ====== 處理訊息邏輯（快速 ChatGPT 模式） ======
 def process_message(user_id, user_message, event):
-    print(f"📩 開始處理訊息：user_id={user_id}, message={user_message}")
+    print(f"📩 處理訊息：user_id={user_id}, message={user_message}")
 
     try:
         user_ref = db.collection("users").document(user_id)
         user_doc = user_ref.get()
 
         if user_doc.exists:
-            print("✅ 找到用戶對話歷史")
             user_data = user_doc.to_dict()
-            thread_id = user_data.get("thread_id")
             messages = user_data.get("messages", [])
         else:
-            print("🆕 未找到用戶資料，創建新對話")
-            thread_id = create_thread(user_id)
             messages = []
 
-        # 📩 **新增用戶訊息並傳送至 OpenAI**
         messages.append({"role": "user", "content": user_message})
-        add_message_to_thread(thread_id, "user", user_message)
 
-        assistant_reply = run_assistant(thread_id)
+        # 建立角色提示與上下文（只保留近 3 則）
+        system_prompt = {
+            "role": "system",
+            "content": "你是安昕，一位親切溫和的睡眠拖延治療機器人，請用 200~300 字純文字回答，結尾要提問。禁止重複問題。"
+        }
+        history_for_chat = [system_prompt] + [{"role": m["role"], "content": m["content"]} for m in messages[-3:]]
+
+        # 取得 GPT 回應
+        assistant_reply = run_chat_completion(history_for_chat)
         assistant_reply = remove_markdown(assistant_reply)
 
-        # 🔄 **更新 Firestore 紀錄**
+        # 更新 Firestore
         messages.append({"role": "assistant", "content": assistant_reply})
-        user_ref.set({"thread_id": thread_id, "messages": messages})
+        user_ref.set({"messages": messages})
 
-        # ✅ **確保 LINE 回應長度不超過 400**
+        # 回傳給 LINE（每段不超過 200 字）
         max_length = 200
-        reply_messages = [assistant_reply[i:i+max_length] for i in range(0, len(assistant_reply), max_length)]
-
-        # ✅ **逐一發送訊息**
-        line_bot_api.reply_message(event.reply_token, [TextSendMessage(text=msg) for msg in reply_messages])
+        reply_messages = [TextSendMessage(text=assistant_reply[i:i+max_length]) for i in range(0, len(assistant_reply), max_length)]
+        line_bot_api.reply_message(event.reply_token, reply_messages)
 
     except Exception as e:
-        print(f"❌ 錯誤: {traceback.format_exc()}")
+        print("❌ 發生錯誤：")
+        traceback.print_exc()
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❗安昕暫時無法使用，請稍後再試"))
-
     finally:
         if user_id in user_lock:
-            del user_lock[user_id]  # ✅ 清除鎖定，允許下一個請求
+            del user_lock[user_id]
 
+# ====== 啟動應用程式 ======
 if __name__ == "__main__":
     port = int(os.getenv('PORT', 8080))
     print(f"🚀 應用程式啟動中，監聽埠號 {port}...")
