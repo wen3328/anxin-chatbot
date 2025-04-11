@@ -43,7 +43,7 @@ def run_chat_completion(messages):
             model="gpt-4o",
             messages=messages,
             max_tokens=300,  # 控制字數落在 200~300 字
-            temperature=0.8
+            temperature=0.8,
             stream=False
         )
         return response.choices[0].message.content.strip()
