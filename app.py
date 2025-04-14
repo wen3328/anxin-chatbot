@@ -50,7 +50,7 @@ def run_chat_completion(messages):
     except Exception as e:
         print("❌ ChatCompletion 錯誤：")
         traceback.print_exc()
-        return "❗️安曖暨時無法使用，請稍後再試"
+        return "❗️安昕暨時無法使用，請稍後再試"
 
 # ====== 清除 markdown 格式（防止 LINE 亂碼） ======
 def remove_markdown(text):
@@ -87,6 +87,7 @@ def process_message(user_id, user_message, event):
     print(f"📩 處理訊息：user_id={user_id}, message={user_message}")
 
     try:
+        # 取得使用者歷史對話
         user_ref = db.collection("users").document(user_id)
         user_doc = user_ref.get()
 
@@ -96,7 +97,20 @@ def process_message(user_id, user_message, event):
         else:
             messages = []
 
+        # 加入最新訊息
         messages.append({"role": "user", "content": user_message})
+
+        # ====== 檢查是否為回顧代碼，載入對應的 review_prompt ======
+        review_prompt = ""
+        review_code = user_message.upper()
+
+        try:
+            prompt_doc = db.collection("review_prompts").document(review_code).get()
+            if prompt_doc.exists:
+                review_prompt = prompt_doc.to_dict().get("prompt", "")
+                print(f"✅ 讀取 review_prompts/{review_code} 的 prompt 成功")
+        except Exception as e:
+            print(f"❌ 讀取 review_prompts/{review_code} 發生錯誤：{e}")
 
         system_prompt = {
             "role": "system",
@@ -148,7 +162,7 @@ def process_message(user_id, user_message, event):
 2️⃣ 壓力 / 情緒指數（1-5 分制）  
 
 🔹 3. 睡眠日記回饋  
-✅ 收到日記後，需給簡單回饋，鼓勵受測者調整狀態。  
+✅ 收到日記後，需給簡短50~100字的回饋，鼓勵受測者調整狀態。  
 ✅ 例如：  
 「感謝你的回報！🎯 你今天的清醒感是 3 分，建議你今晚試試提早 30 分鐘 放鬆心情哦！」  
 
@@ -164,12 +178,12 @@ def process_message(user_id, user_message, event):
 很高興你想與我進行 睡眠回顧，請輸入正確的 代碼，讓我知道你要進行哪一個回顧喔！😊  
 ✅ 禁止直接提供代碼內容，需等待受測者輸入正確代碼。  
 
-🔹 3. 睡眠回顧代碼 & 回應  
-第一次：3P0OEI → 「請確保你在安靜、舒適、不受打擾的環境中進行回顧。」  
+🔹 3. 睡眠回顧代碼 & 回應  （每次回顧時間約5~10分鐘）
+第一次回顧：3P0OEI → 「請確保你在安靜、舒適、不受打擾的環境中進行回顧。」  
 「很高興您要開始 第一次睡眠回顧！💡（目標：釐清入睡拖延的原因與行為模式）⏳ 準備好了嗎？」  
-第二次：KI0GTZ → 「請確保你在安靜、舒適、不受打擾的環境中進行回顧。」  
+第二次回顧：KI0GTZ → 「請確保你在安靜、舒適、不受打擾的環境中進行回顧。」  
 「很高興您要開始 第二次睡眠回顧！💡（目標：回顧行為挑戰與改變經驗）⏳ 準備好了嗎？」  
-第三次：SG6OPS → 「請確保你在安靜、舒適、不受打擾的環境中進行回顧。」  
+第三次回顧：SG6OPS → 「請確保你在安靜、舒適、不受打擾的環境中進行回顧。」  
 「很高興您要開始 第三次睡眠回顧！💡（目標：統整策略，規劃持續改善的方法）⏳ 準備好了嗎？」  
 ⚠️ 重要：每次回顧結束時，給予簡短的回顧總結  
 
@@ -177,7 +191,7 @@ def process_message(user_id, user_message, event):
 ✅ 開始時，每次訊息開頭需加上 ⏳ 符號，直到回顧結束。  
 ✅ 所有回覆內容應簡潔、具親和力，並盡可能結尾包含提問，引導受測者思考與回應。  
 ✅ 每則回應落在 200～300 字之間。  
-✅ 禁止出現任何簡體中文，僅可使用標準繁體中文。  
+✅ 禁止出現任何簡體中文，僅可使用標準繁體中文，且為台灣常用用語。  
 
 【⏳ 第一階段：開場與設定目標】  
 ⏳ 親切問候並說明當次回顧的目標主題  
@@ -209,6 +223,7 @@ def process_message(user_id, user_message, event):
 3️⃣ 記錄每日睡眠日記，提供簡單回饋。  
 4️⃣ 進行睡眠回顧（代碼啟動），以 ⏳ 引導對話。  
 5️⃣ 保密所有實驗資訊，並堅守專業規範。
+
 """}
 
         # 擷取最多 3000 字的歷史對話
