@@ -198,7 +198,7 @@ def handle_message(event):
 import re  # 加上這個才能使用 regex
 
 def process_message(user_id, user_message, event):
-    print(f"📩 處理訊息：user_id={user_id}, message={user_message}")
+    print(f"📩 處理訊息：user_id={user_id}, message={user_message}", flush=True)
 
     try:
         # 取得使用者歷史對話
@@ -217,28 +217,28 @@ def process_message(user_id, user_message, event):
         # ====== 條件判斷：是否輸入「我要進行第X次睡眠回顧 代碼」 ======
         review_prompt = ""
         review_code = ""
-        match = re.search(r"我要進行第.+?次睡眠回顧\s+([A-Z0-9]{6})", user_message.upper())
+        match = re.search(r"我要進行第.+?次睡眠回顧\s+([A-Za-z0-9]{6})", user_message)
         if match:
-            review_code = match.group(1)
-            print(f"🔍 偵測到回顧代碼：{review_code}")
+            review_code = match.group(1).upper()
+            print(f"🔍 偵測到回顧代碼：{review_code}", flush=True)
             try:
                 prompt_doc = db.collection("review_prompts").document(review_code).get()
                 if prompt_doc.exists:
                     review_prompt = prompt_doc.to_dict().get("prompt", "")
-                    print(f"✅ 讀取 review_prompts/{review_code} 的 prompt 成功")
+                    print(f"✅ 讀取 review_prompts/{review_code} 的 prompt 成功", flush=True)
                 else:
-                    print(f"⚠️ 未找到代碼 {review_code} 的 prompt 文件")
+                    print(f"⚠️ 未找到代碼 {review_code} 的 prompt 文件", flush=True)
             except Exception as e:
-                print(f"❌ 讀取 review_prompts/{review_code} 發生錯誤：{e}")
+                print(f"❌ 讀取 review_prompts/{review_code} 發生錯誤：{e}", flush=True)
         else:
-            print("🕊️ 沒有偵測到回顧代碼關鍵字，不載入 review_prompt")
+            print("🕊️ 沒有偵測到回顧代碼關鍵字，不載入 review_prompt", flush=True)
 
+        # ====== 組合對話歷史並加入 system prompt ======
         system_prompt = {
             "role": "system",
             "content": review_prompt if review_prompt else DEFAULT_SYSTEM_PROMPT
         }
 
-        # 擷取最多 3000 字的歷史對話
         history_for_chat = [system_prompt]
         total_chars = 0
         for m in reversed(messages):
@@ -247,6 +247,7 @@ def process_message(user_id, user_message, event):
                 break
             history_for_chat.insert(1, {"role": m["role"], "content": m["content"]})
 
+        # ====== 呼叫 ChatGPT 回覆 ======
         assistant_reply = run_chat_completion(history_for_chat)
         assistant_reply = remove_markdown(assistant_reply)
 
@@ -270,25 +271,23 @@ def process_message(user_id, user_message, event):
                     }
                 }
             }, merge=True)
-            print(f"📝 已記錄 {user_id} 完成 {review_code} 的目標 {subgoal_completed}")
+            print(f"📝 已記錄 {user_id} 完成 {review_code} 的目標 {subgoal_completed}", flush=True)
 
-        # 回覆訊息給 LINE（切段）
+        # ====== 回覆訊息給 LINE（切段） ======
         max_length = 200
         reply_messages = [
-            TextSendMessage(text=assistant_reply[i:i+max_length])
+            TextSendMessage(text=assistant_reply[i:i + max_length])
             for i in range(0, len(assistant_reply), max_length)
         ]
         line_bot_api.reply_message(event.reply_token, reply_messages)
 
     except Exception as e:
-        print("❌ 發生錯誤：")
+        print("❌ 發生錯誤：", flush=True)
         traceback.print_exc()
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❗安昕暫時無法使用，請稍後再試"))
     finally:
         if user_id in user_lock:
             del user_lock[user_id]
-
-
 
 
 # ====== 啟動應用程式 ======
