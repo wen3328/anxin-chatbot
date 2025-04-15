@@ -195,6 +195,8 @@ def handle_message(event):
     user_lock[user_id].start()
 
 # ====== 處理訊息邏輯（快速 ChatGPT 模式） ======
+import re  # 加上這個才能使用 regex
+
 def process_message(user_id, user_message, event):
     print(f"📩 處理訊息：user_id={user_id}, message={user_message}")
 
@@ -212,17 +214,24 @@ def process_message(user_id, user_message, event):
         # 加入最新訊息
         messages.append({"role": "user", "content": user_message})
 
-        # ====== 檢查是否為回顧代碼，載入對應的 review_prompt ======
+        # ====== 條件判斷：是否輸入「我要進行第X次睡眠回顧 代碼」 ======
         review_prompt = ""
-        review_code = user_message.upper()
-
-        try:
-            prompt_doc = db.collection("review_prompts").document(review_code).get()
-            if prompt_doc.exists:
-                review_prompt = prompt_doc.to_dict().get("prompt", "")
-                print(f"✅ 讀取 review_prompts/{review_code} 的 prompt 成功")
-        except Exception as e:
-            print(f"❌ 讀取 review_prompts/{review_code} 發生錯誤：{e}")
+        review_code = ""
+        match = re.search(r"我要進行第.+?次睡眠回顧\s+([A-Z0-9]{6})", user_message.upper())
+        if match:
+            review_code = match.group(1)
+            print(f"🔍 偵測到回顧代碼：{review_code}")
+            try:
+                prompt_doc = db.collection("review_prompts").document(review_code).get()
+                if prompt_doc.exists:
+                    review_prompt = prompt_doc.to_dict().get("prompt", "")
+                    print(f"✅ 讀取 review_prompts/{review_code} 的 prompt 成功")
+                else:
+                    print(f"⚠️ 未找到代碼 {review_code} 的 prompt 文件")
+            except Exception as e:
+                print(f"❌ 讀取 review_prompts/{review_code} 發生錯誤：{e}")
+        else:
+            print("🕊️ 沒有偵測到回顧代碼關鍵字，不載入 review_prompt")
 
         system_prompt = {
             "role": "system",
@@ -251,7 +260,7 @@ def process_message(user_id, user_message, event):
                 subgoal_completed = i
                 break
 
-        if subgoal_completed:
+        if subgoal_completed and review_code:
             review_ref = db.collection("review_status").document(user_id)
             review_ref.set({
                 review_code: {
@@ -278,6 +287,7 @@ def process_message(user_id, user_message, event):
     finally:
         if user_id in user_lock:
             del user_lock[user_id]
+
 
 
 
