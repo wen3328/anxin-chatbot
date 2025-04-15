@@ -226,7 +226,8 @@ def process_message(user_id, user_message, event):
 
         system_prompt = {
             "role": "system",
-            "content": review_prompt if review_prompt else DEFAULT_SYSTEM_PROMPT }
+            "content": review_prompt if review_prompt else DEFAULT_SYSTEM_PROMPT
+        }
 
         # 擷取最多 3000 字的歷史對話
         history_for_chat = [system_prompt]
@@ -243,6 +244,26 @@ def process_message(user_id, user_message, event):
         messages.append({"role": "assistant", "content": assistant_reply})
         user_ref.set({"messages": messages})
 
+        # ====== 額外記錄子目標完成狀態（目標1～5） ======
+        subgoal_completed = None
+        for i in range(1, 6):
+            if f"✅ 已完成目標 {i}" in assistant_reply:
+                subgoal_completed = i
+                break
+
+        if subgoal_completed:
+            review_ref = db.collection("review_status").document(user_id)
+            review_ref.set({
+                review_code: {
+                    f"goal_{subgoal_completed}": {
+                        "completed": True,
+                        "timestamp": firestore.SERVER_TIMESTAMP
+                    }
+                }
+            }, merge=True)
+            print(f"📝 已記錄 {user_id} 完成 {review_code} 的目標 {subgoal_completed}")
+
+        # 回覆訊息給 LINE（切段）
         max_length = 200
         reply_messages = [
             TextSendMessage(text=assistant_reply[i:i+max_length])
@@ -257,6 +278,7 @@ def process_message(user_id, user_message, event):
     finally:
         if user_id in user_lock:
             del user_lock[user_id]
+
 
 
 # ====== 啟動應用程式 ======
