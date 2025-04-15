@@ -201,7 +201,7 @@ def process_message(user_id, user_message, event):
     print(f"📩 處理訊息：user_id={user_id}, message={user_message}", flush=True)
 
     try:
-        # 取得使用者歷史對話
+        # 取得使用者歷史對話與狀態
         user_ref = db.collection("users").document(user_id)
         user_doc = user_ref.get()
 
@@ -209,6 +209,7 @@ def process_message(user_id, user_message, event):
             user_data = user_doc.to_dict()
             messages = user_data.get("messages", [])
         else:
+            user_data = {}
             messages = []
 
         # 加入最新訊息
@@ -217,21 +218,32 @@ def process_message(user_id, user_message, event):
         # ====== 條件判斷：是否輸入「我要進行第X次睡眠回顧 代碼」 ======
         review_prompt = ""
         review_code = ""
-        match = re.search(r"我要進行第.+?次睡眠回顧\s+([A-Za-z0-9]{6})", user_message)
+        match = re.search(r"我要進行第.+?次(睡眠)?回顧\s+([A-Za-z0-9]{6})", user_message)
         if match:
-            review_code = match.group(1).upper()
+            review_code = match.group(2).upper()
             print(f"🔍 偵測到回顧代碼：{review_code}", flush=True)
             try:
                 prompt_doc = db.collection("review_prompts").document(review_code).get()
                 if prompt_doc.exists:
                     review_prompt = prompt_doc.to_dict().get("prompt", "")
                     print(f"✅ 讀取 review_prompts/{review_code} 的 prompt 成功", flush=True)
+                    user_ref.update({"current_review_code": review_code})
                 else:
                     print(f"⚠️ 未找到代碼 {review_code} 的 prompt 文件", flush=True)
             except Exception as e:
                 print(f"❌ 讀取 review_prompts/{review_code} 發生錯誤：{e}", flush=True)
         else:
-            print("🕊️ 沒有偵測到回顧代碼關鍵字，不載入 review_prompt", flush=True)
+            review_code = user_data.get("current_review_code", "")
+            if review_code:
+                try:
+                    prompt_doc = db.collection("review_prompts").document(review_code).get()
+                    if prompt_doc.exists:
+                        review_prompt = prompt_doc.to_dict().get("prompt", "")
+                        print(f"📌 使用儲存中的回顧代碼：{review_code}", flush=True)
+                except Exception as e:
+                    print(f"❌ 讀取現有回顧代碼發生錯誤：{e}", flush=True)
+            else:
+                print("🕊️ 沒有偵測到回顧代碼關鍵字，也沒有使用中回顧", flush=True)
 
         # ====== 組合對話歷史並加入 system prompt ======
         system_prompt = {
@@ -252,7 +264,7 @@ def process_message(user_id, user_message, event):
         assistant_reply = remove_markdown(assistant_reply)
 
         messages.append({"role": "assistant", "content": assistant_reply})
-        user_ref.set({"messages": messages})
+        user_ref.set({"messages": messages}, merge=True)
 
         # ====== 額外記錄子目標完成狀態（目標1～5） ======
         subgoal_completed = None
@@ -272,6 +284,11 @@ def process_message(user_id, user_message, event):
                 }
             }, merge=True)
             print(f"📝 已記錄 {user_id} 完成 {review_code} 的目標 {subgoal_completed}", flush=True)
+
+        # ====== 若整個回顧結束，清除 current_review_code ======
+        if "✅ 本次睡眠回顧已順利完成" in assistant_reply and review_code:
+            user_ref.update({"current_review_code": firestore.DELETE_FIELD})
+            print(f"🧹 已清除 {user_id} 的 current_review_code（回顧完成）", flush=True)
 
         # ====== 回覆訊息給 LINE（切段） ======
         max_length = 200
