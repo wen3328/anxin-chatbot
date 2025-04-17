@@ -118,7 +118,7 @@ firebase_admin.initialize_app(firebase_cred)
 db = firestore.client()
 
 def get_gsheet_client():
-    gsheet_credentials = os.getenv("GSHEET_CREDENTIALS")
+    gsheet_credentials = os.getenv("GOOGLE_SHEETS_KEY")
     info = json.loads(gsheet_credentials)
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
     creds = Credentials.from_service_account_info(info, scopes=scopes)
