@@ -10,11 +10,11 @@ import threading
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
-
 import firebase_admin
 from firebase_admin import credentials, firestore
-
 from openai import OpenAI
+import gspread
+from google.oauth2.service_account import Credentials
 
 # ====== 初始化設定 ======
 load_dotenv()
@@ -116,6 +116,18 @@ def get_firebase_credentials_from_env():
 firebase_cred = get_firebase_credentials_from_env()
 firebase_admin.initialize_app(firebase_cred)
 db = firestore.client()
+
+def get_gsheet_client():
+    gsheet_credentials = os.getenv("GSHEET_CREDENTIALS")
+    info = json.loads(gsheet_credentials)
+    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    creds = Credentials.from_service_account_info(info, scopes=scopes)
+    return gspread.authorize(creds)
+
+gc = get_gsheet_client()
+sheet = gc.open_by_key("15frK46I_1OoPhlcJPBMyH53AWNkqhPT_8bS6igbi2_4")
+worksheet = sheet.worksheet("sleep_diary")
+
 
 # ====== GPT 回應處理（ChatCompletion） ======
 def run_chat_completion(messages):
