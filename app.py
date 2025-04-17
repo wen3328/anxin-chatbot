@@ -183,7 +183,13 @@ import re  # 加上這個才能使用 regex
 def process_message(user_id, user_message, event):
     print(f"📩 處理訊息：user_id={user_id}, message={user_message}", flush=True)
 
-    user_ref = db.collection("users").document(user_id)  # ✅ 文件參照
+    user_ref = db.collection("users").document(user_id)
+
+    # === 忽略含特定關鍵字的訊息 ===
+    skip_keywords = ["我要填寫睡眠日記～"]
+    if any(keyword in user_message for keyword in skip_keywords):
+        print(f"⏩ 略過訊息：{user_message}（符合略過關鍵字）")
+        return
 
     # ====== 若使用者輸入「我的姓名：XXX」，紀錄至 Firebase ======
     name_match = re.match(r"我的姓名[:：]\s*(.+)", user_message)
