@@ -252,8 +252,9 @@ def process_message(user_id, user_message, event):
         # ====== 組合對話歷史並加入 system prompt ======
         system_prompt = {
             "role": "system",
-            "content": review_prompt if review_prompt else DEFAULT_SYSTEM_PROMPT
+            "content": review_prompt + "\n" + DEFAULT_SYSTEM_PROMPT if review_prompt else DEFAULT_SYSTEM_PROMPT
         }
+
 
         history_for_chat = [system_prompt]
         total_chars = 0
