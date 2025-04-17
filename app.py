@@ -281,73 +281,68 @@ def process_message(user_id, user_message, event):
             }, merge=True)
             print(f"📝 已記錄 {user_id} 完成 {review_code} 的目標 {subgoal_completed}", flush=True)
 
-        # ====== 判斷是否為睡眠日記回報並記錄至 Google Sheet ======
-try:
-    from datetime import datetime
+                # ====== 判斷是否為睡眠日記回報並記錄至 Google Sheet ======
+        from datetime import datetime
 
-    # 判斷早上記錄格式
-    if "起床時間：" in user_message and "實際入睡時間：" in user_message and "清醒感" in user_message:
-        date_match = re.search(r'📖｜?(\d{1,2}/\d{1,2})', user_message)
-        date_str = date_match.group(1) if date_match else datetime.now().strftime("%-m/%-d")
-        wakeup = re.search(r"起床時間：(.+)", user_message)
-        sleep = re.search(r"實際入睡時間：(.+)", user_message)
-        alert = re.search(r"清醒感.*?：(\d+)", user_message)
+        try:
+            # 判斷早上記錄格式
+            if "起床時間：" in user_message and "實際入睡時間：" in user_message and "清醒感" in user_message:
+                date_match = re.search(r'📖｜?(\d{1,2}/\d{1,2})', user_message)
+                date_str = date_match.group(1) if date_match else datetime.now().strftime("%-m/%-d")
+                wakeup = re.search(r"起床時間：(.+)", user_message)
+                sleep = re.search(r"實際入睡時間：(.+)", user_message)
+                alert = re.search(r"清醒感.*?：(\d+)", user_message)
 
-        worksheet = sheet.worksheet("sleep_diary")
-        rows = worksheet.get_all_records()
-        name = event.source.user_id  # 預設以 user_id 為姓名欄位，等會會取代
-        display_name = line_bot_api.get_profile(user_id).display_name
+                rows = worksheet.get_all_records()
+                display_name = line_bot_api.get_profile(user_id).display_name
 
-        # 找到對應 row 或新增
-        row_idx = None
-        for idx, row in enumerate(rows, start=2):
-            if row.get("user_id") == user_id and row.get("日期") == date_str:
-                row_idx = idx
-                break
+                row_idx = None
+                for idx, row in enumerate(rows, start=2):
+                    if row.get("user_id") == user_id and row.get("日期") == date_str:
+                        row_idx = idx
+                        break
 
-        if row_idx:
-            worksheet.update(f"E{row_idx}", wakeup.group(1) if wakeup else "")
-            worksheet.update(f"F{row_idx}", sleep.group(1) if sleep else "")
-            worksheet.update(f"G{row_idx}", alert.group(1) if alert else "")
-        else:
-            new_row = ["", display_name, user_id, date_str,
-                       wakeup.group(1) if wakeup else "",
-                       sleep.group(1) if sleep else "",
-                       alert.group(1) if alert else "",
-                       "", ""]
-            worksheet.append_row(new_row)
-        print(f"📊 已紀錄早上睡眠日記：{user_id} {date_str}")
+                if row_idx:
+                    worksheet.update(f"E{row_idx}", wakeup.group(1) if wakeup else "")
+                    worksheet.update(f"F{row_idx}", sleep.group(1) if sleep else "")
+                    worksheet.update(f"G{row_idx}", alert.group(1) if alert else "")
+                else:
+                    new_row = ["", display_name, user_id, date_str,
+                            wakeup.group(1) if wakeup else "",
+                            sleep.group(1) if sleep else "",
+                            alert.group(1) if alert else "",
+                            "", ""]
+                    worksheet.append_row(new_row)
+                print(f"📊 已紀錄早上睡眠日記：{user_id} {date_str}")
 
-    # 判斷晚上記錄格式
-    elif "預計入睡時間：" in user_message and ("壓力" in user_message or "情緒" in user_message):
-        date_match = re.search(r'📖睡眠日記｜?(\d{1,2}/\d{1,2})', user_message)
-        date_str = date_match.group(1) if date_match else datetime.now().strftime("%-m/%-d")
-        plan = re.search(r"預計入睡時間：(.+)", user_message)
-        mood = re.search(r"(?:壓力|情緒).*?：(\d+)", user_message)
+            # 判斷晚上記錄格式
+            elif "預計入睡時間：" in user_message and ("壓力" in user_message or "情緒" in user_message):
+                date_match = re.search(r'📖睡眠日記｜?(\d{1,2}/\d{1,2})', user_message)
+                date_str = date_match.group(1) if date_match else datetime.now().strftime("%-m/%-d")
+                plan = re.search(r"預計入睡時間：(.+)", user_message)
+                mood = re.search(r"(?:壓力|情緒).*?：(\d+)", user_message)
 
-        worksheet = sheet.worksheet("sleep_diary")
-        rows = worksheet.get_all_records()
-        display_name = line_bot_api.get_profile(user_id).display_name
+                rows = worksheet.get_all_records()
+                display_name = line_bot_api.get_profile(user_id).display_name
 
-        # 找到對應 row 或新增
-        row_idx = None
-        for idx, row in enumerate(rows, start=2):
-            if row.get("user_id") == user_id and row.get("日期") == date_str:
-                row_idx = idx
-                break
+                row_idx = None
+                for idx, row in enumerate(rows, start=2):
+                    if row.get("user_id") == user_id and row.get("日期") == date_str:
+                        row_idx = idx
+                        break
 
-        if row_idx:
-            worksheet.update(f"H{row_idx}", plan.group(1) if plan else "")
-            worksheet.update(f"I{row_idx}", mood.group(1) if mood else "")
-        else:
-            new_row = ["", display_name, user_id, date_str,
-                       "", "", "",
-                       plan.group(1) if plan else "",
-                       mood.group(1) if mood else ""]
-            worksheet.append_row(new_row)
-        print(f"📊 已紀錄晚上睡眠日記：{user_id} {date_str}")
-except Exception as e:
-    print(f"❌ Google Sheets 紀錄失敗：{e}")
+                if row_idx:
+                    worksheet.update(f"H{row_idx}", plan.group(1) if plan else "")
+                    worksheet.update(f"I{row_idx}", mood.group(1) if mood else "")
+                else:
+                    new_row = ["", display_name, user_id, date_str,
+                            "", "", "",
+                            plan.group(1) if plan else "",
+                            mood.group(1) if mood else ""]
+                    worksheet.append_row(new_row)
+                print(f"📊 已紀錄晚上睡眠日記：{user_id} {date_str}")
+        except Exception as e:
+            print(f"❌ Google Sheets 紀錄失敗：{e}")
 
 
         # ====== 若整個回顧結束，清除 current_review_code ======
