@@ -180,8 +180,6 @@ import re  # 加上這個才能使用 regex
 
 def process_message(user_id, user_message, event):
     print(f"📩 處理訊息：user_id={user_id}, message={user_message}", flush=True)
-    # 加入最新訊息
-    messages.append({"role": "user", "content": user_message})
 
     # ====== 若使用者輸入「我的姓名：XXX」，紀錄至 Firebase ======
     name_match = re.match(r"我的姓名[:：]\s*(.+)", user_message)
