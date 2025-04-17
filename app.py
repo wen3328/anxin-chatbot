@@ -190,7 +190,7 @@ def process_message(user_id, user_message, event):
         "我要填寫睡眠日記～",
         "第一次睡眠回顧將於4/27開放～",
         "第二次睡眠回顧將於5/4開放～",
-        "第三次睡眠回顧將於5/11開放～"
+        "第三次睡眠回顧將於5/11開放～","本實驗於4/21開始～"
     ]
     if any(keyword in user_message for keyword in skip_keywords):
         print(f"⏩ 略過訊息：{user_message}（符合略過關鍵字）", flush=True)
