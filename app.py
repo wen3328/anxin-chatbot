@@ -181,13 +181,13 @@ import re  # 加上這個才能使用 regex
 def process_message(user_id, user_message, event):
     print(f"📩 處理訊息：user_id={user_id}, message={user_message}", flush=True)
 
-    user_ref = db.collection("users").document(user_id)  # ✅ 加這行
+    user_ref = db.collection("users").document(user_id)  # ✅ 文件參照
 
     # ====== 若使用者輸入「我的姓名：XXX」，紀錄至 Firebase ======
     name_match = re.match(r"我的姓名[:：]\s*(.+)", user_message)
     if name_match:
         name = name_match.group(1).strip()
-        user_ref.update({"name": name})
+        user_ref.set({"name": name}, merge=True)  # ✅ 安全寫法：自動建立文件 + 更新欄位
         print(f"📌 已紀錄 {user_id} 的姓名為：{name}", flush=True)
         line_bot_api.reply_message(
             event.reply_token,
