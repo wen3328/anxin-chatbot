@@ -185,14 +185,19 @@ def process_message(user_id, user_message, event):
 
     user_ref = db.collection("users").document(user_id)
 
-    # === 忽略含特定關鍵字的訊息 ===
-    skip_keywords = ["我要填寫睡眠日記～","第一次睡眠回顧將於4/27開放～","第二次睡眠回顧將於5/4開放～","第三次睡眠回顧將於5/11開放～"]
+    # ====== 忽略含特定關鍵字的訊息 ======
+    skip_keywords = [
+        "我要填寫睡眠日記～",
+        "第一次睡眠回顧將於4/27開放～",
+        "第二次睡眠回顧將於5/4開放～",
+        "第三次睡眠回顧將於5/11開放～"
+    ]
     if any(keyword in user_message for keyword in skip_keywords):
-        print(f"⏩ 略過訊息：{user_message}（符合略過關鍵字）")
+        print(f"⏩ 略過訊息：{user_message}（符合略過關鍵字）", flush=True)
         return
 
-    # ====== 若使用者輸入「我的姓名：XXX」，紀錄至 Firebase ======
-    name_match = re.match(r"我的姓名[:：]\s*(.+)", user_message)
+    # ====== 若使用者輸入「我的姓名XXX」或「我的姓名：XXX」，紀錄至 Firebase ======
+    name_match = re.match(r"我的姓名[:：]?\s*(.+)", user_message)
     if name_match:
         name = name_match.group(1).strip()
         user_ref.set({"name": name}, merge=True)  # ✅ 安全寫法：自動建立文件 + 更新欄位
