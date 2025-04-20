@@ -152,7 +152,7 @@ def run_chat_completion(messages):
     except Exception as e:
         print("❌ ChatCompletion 錯誤：")
         traceback.print_exc()
-        return "❗️安昕暨時無法使用，請稍後再試"
+        return "❕請稍後再傳一次訊息"
 
 # ====== 清除 markdown 格式（防止 LINE 亂碼） ======
 def remove_markdown(text):
