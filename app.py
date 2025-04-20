@@ -9,12 +9,14 @@ import threading
 
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.models import MessageEvent, TextMessage, TextSendMessage, StickerMessage  
 import firebase_admin
 from firebase_admin import credentials, firestore
 from openai import OpenAI
 import gspread
 from google.oauth2.service_account import Credentials
+import re  # 加上這個才能使用 regex
+
 
 # ====== 初始化設定 ======
 load_dotenv()
@@ -169,7 +171,16 @@ def callback():
     except InvalidSignatureError:
         abort(400)
     return 'OK'
-
+    
+@handler.add(MessageEvent, message=StickerMessage)
+def handle_sticker(event):
+    user_id = event.source.user_id
+    print(f"🎨 收到貼圖：user_id={user_id}", flush=True)
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text="謝謝你的貼圖！我無法直接回貼圖～✨ 有想聊睡眠拖延的內容，歡迎告訴我！")
+    )
+    
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_id = event.source.user_id
@@ -183,8 +194,6 @@ def handle_message(event):
     user_lock[user_id].start()
 
 # ====== 處理訊息邏輯（快速 ChatGPT 模式） ======
-import re  # 加上這個才能使用 regex
-
 def process_message(user_id, user_message, event):
     print(f"📩 處理訊息：user_id={user_id}, message={user_message}", flush=True)
 
